@@ -2,9 +2,11 @@
 
 import sys
 import logging
+from pathlib import Path
 
 try:
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QIcon
     from PySide6.QtCore import Qt
 except ImportError:
     print(
@@ -33,6 +35,10 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("AI Document Enhancement System")
     app.setOrganizationName("SE_Project")
+
+    icon_path = Path(__file__).resolve().parent / "resources" / "icons" / "app_icon.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     app.setStyleSheet(get_theme("dark"))
 

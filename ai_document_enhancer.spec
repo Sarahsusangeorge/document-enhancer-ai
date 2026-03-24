@@ -125,6 +125,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(RESOURCES_DIR / "icons" / "app_icon.ico"),
 )
 
 # ── COLLECT (gather into dist/AIDocumentEnhancer/) ──────────────────

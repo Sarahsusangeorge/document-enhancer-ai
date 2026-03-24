@@ -9,14 +9,15 @@ A desktop application built with PySide6 that transforms scanned document images
 1. [Features](#features)
 2. [Prerequisites](#prerequisites)
 3. [Installation](#installation)
-4. [Usage](#usage)
-5. [Pipeline Stages](#pipeline-stages)
-6. [Configuration](#configuration)
-7. [Project Structure](#project-structure)
-8. [Testing](#testing)
-9. [Building a Windows Executable](#building-a-windows-executable)
-10. [Troubleshooting](#troubleshooting)
-11. [License](#license)
+4. [Launching the Application](#launching-the-application)
+5. [Usage](#usage)
+6. [Pipeline Stages](#pipeline-stages)
+7. [Configuration](#configuration)
+8. [Project Structure](#project-structure)
+9. [Testing](#testing)
+10. [Development Setup](#development-setup)
+11. [Troubleshooting](#troubleshooting)
+12. [License](#license)
 
 ---
 
@@ -77,11 +78,18 @@ The `language-tool-python` package downloads a local LanguageTool server automat
 
 ## Installation
 
+Follow these steps to install the application and build a standalone Windows executable (`.exe`) that you can launch by double-clicking — just like any other desktop app.
+
+### Step 1 — Clone the Repository
+
 ```bash
-# Clone the repository
 git clone <repo-url>
 cd SE_project
+```
 
+### Step 2 — Create a Virtual Environment and Install Dependencies
+
+```bash
 # Create and activate a virtual environment
 python -m venv venv
 venv\Scripts\activate        # Windows (PowerShell / CMD)
@@ -93,17 +101,55 @@ pip install -r requirements.txt
 
 > **Tip:** On machines without a GPU, PyTorch will install the CPU-only variant automatically. The summarizer and paraphraser models (DistilBART, T5) run on CPU by default.
 
----
+### Step 3 — Build the Windows Executable
 
-## Usage
-
-### Launching the Application
+The project includes a PyInstaller spec file (`ai_document_enhancer.spec`) pre-configured to bundle all resources, the app icon, hidden imports, and runtime hooks. Run:
 
 ```bash
+pyinstaller ai_document_enhancer.spec
+```
+
+This creates the application at:
+
+```
+dist\AIDocumentEnhancer\AIDocumentEnhancer.exe
+```
+
+The output is a folder (`dist\AIDocumentEnhancer\`) containing the `.exe` and all its supporting files. To distribute the app, zip and share the entire folder.
+
+### Step 4 — Create a Desktop Shortcut (optional)
+
+1. Navigate to `dist\AIDocumentEnhancer\` in File Explorer.
+2. Right-click **AIDocumentEnhancer.exe** → **Show more options** → **Create shortcut**.
+3. Move the shortcut to your Desktop or pin it to your Taskbar.
+
+You can now launch the application by double-clicking the shortcut — no terminal or Python required.
+
+> **Note:** Tesseract OCR and Poppler must still be installed on the machine (see [Prerequisites](#prerequisites)). On first run, the LanguageTool Java server and Hugging Face models (~750 MB) will download automatically if not already cached.
+
+---
+
+## Launching the Application
+
+### Option A — Double-click the Executable (recommended)
+
+After building, open `dist\AIDocumentEnhancer\AIDocumentEnhancer.exe` (or use the desktop shortcut you created). The application window will open directly.
+
+### Option B — Run from Source (for development)
+
+If you prefer to run from source without building:
+
+```bash
+cd SE_project
+venv\Scripts\activate
 python main.py
 ```
 
 The application opens in **dark theme** by default. Use the theme toggle in the sidebar to switch to light mode.
+
+---
+
+## Usage
 
 ### Workflow
 
@@ -255,50 +301,19 @@ mutmut results
 
 ---
 
-## Building a Windows Executable
+## Development Setup
 
-The project includes a PyInstaller spec file (`ai_document_enhancer.spec`) pre-configured to bundle all resources, hidden imports, and runtime hooks.
-
-### Quick Build
+If you want to run the application from source (without building an `.exe`) for development or debugging purposes:
 
 ```bash
-pyinstaller ai_document_enhancer.spec
+cd SE_project
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
 ```
 
-The output executable is written to `dist/AIDocumentEnhancer/AIDocumentEnhancer.exe` (one-directory mode) along with all supporting files. Run it directly — no Python installation is needed on the target machine.
-
-### One-File Build (alternative)
-
-For a single self-contained `.exe` (slower startup, larger file):
-
-```bash
-pyinstaller ai_document_enhancer.spec --onefile
-```
-
-Or build directly without the spec file:
-
-```bash
-pyinstaller --onefile --windowed --name AIDocumentEnhancer ^
-    --add-data "resources/icons;resources/icons" ^
-    --add-data "resources/templates;resources/templates" ^
-    --hidden-import=PySide6.QtSvg ^
-    --hidden-import=sklearn.utils._cython_blas ^
-    --hidden-import=sklearn.neighbors._typedefs ^
-    main.py
-```
-
-### Build Requirements
-
-- All entries in `requirements.txt` must be installed (including `pyinstaller>=6.1.0`).
-- Tesseract OCR and Poppler must still be installed on the **target machine** (or bundled manually into the dist folder).
-- On first run after building, the LanguageTool Java server and Hugging Face models will download automatically if not already cached.
-
-### Build Output
-
-| Mode | Output Path | Notes |
-|------|-------------|-------|
-| One-directory (default) | `dist/AIDocumentEnhancer/` | Faster startup; distribute the whole folder |
-| One-file | `dist/AIDocumentEnhancer.exe` | Single file; extracts to temp on each run |
+This launches the application directly via Python. Any code changes take effect immediately on the next run without needing to rebuild.
 
 ---
 
