@@ -235,18 +235,20 @@ class GrammarEnhancer:
         corrections: List[Correction] = []
         for match in matches:
             replacement = match.replacements[0] if match.replacements else ""
-            original_fragment = text[match.offset:match.offset + match.errorLength]
+            err_len = getattr(match, "error_length", None) or getattr(match, "errorLength", 0)
+            rule_id = getattr(match, "rule_id", None) or getattr(match, "ruleId", "")
+            original_fragment = text[match.offset:match.offset + err_len]
 
             context_start = max(0, match.offset - 30)
-            context_end = min(len(text), match.offset + match.errorLength + 30)
+            context_end = min(len(text), match.offset + err_len + 30)
 
             corrections.append(Correction(
                 original=original_fragment,
                 corrected=replacement,
-                rule_id=match.ruleId,
+                rule_id=rule_id,
                 message=match.message,
                 offset=match.offset,
-                length=match.errorLength,
+                length=err_len,
                 category=getattr(match, "category", ""),
                 context=text[context_start:context_end],
             ))

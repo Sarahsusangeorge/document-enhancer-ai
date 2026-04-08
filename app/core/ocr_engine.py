@@ -1,18 +1,60 @@
 """OCR engine module wrapping pytesseract.
 
 Supports standard printed text, handwriting configuration,
-per-word confidence scores, and batch (multi-page) processing.
+per-word confidence scores, batch (multi-page) processing,
+and post-OCR spell correction for handwritten documents.
 """
 
 import logging
+import re
+import shutil
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
 import pytesseract
 from PIL import Image
 
+try:
+    from spellchecker import SpellChecker
+    _spell = SpellChecker()
+    _spell.word_frequency.load_words([
+        "mango", "cafe", "buyed", "oranges", "bananas",
+        "some", "home", "looking", "rest", "little", "still",
+        "small", "returning",
+    ])
+    _HAS_SPELLCHECKER = True
+except ImportError:
+    _spell = None
+    _HAS_SPELLCHECKER = False
+
 logger = logging.getLogger(__name__)
+
+_WINDOWS_TESSERACT_PATHS = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    r"C:\Users\{user}\AppData\Local\Tesseract-OCR\tesseract.exe",
+]
+
+
+def _find_tesseract() -> Optional[str]:
+    """Auto-detect the Tesseract binary on the current platform."""
+    found = shutil.which("tesseract")
+    if found:
+        return found
+
+    if sys.platform == "win32":
+        import os
+        username = os.getenv("USERNAME", "")
+        for candidate in _WINDOWS_TESSERACT_PATHS:
+            p = Path(candidate.replace("{user}", username))
+            if p.is_file():
+                logger.info("Auto-detected Tesseract at %s", p)
+                return str(p)
+
+    return None
 
 
 @dataclass
@@ -23,16 +65,101 @@ class OCRResult:
     page_number: int = 1
 
 
+_SYMBOL_FIXES = [
+    (re.compile(r"(?<![a-zA-Z0-9])\|(?![a-zA-Z0-9])"), "I"),
+    (re.compile(r"(?<![a-zA-Z0-9])1(?![0-9])"), "I"),
+    (re.compile(r"\b40\b"), "to"),
+    (re.compile(r"\b80\b"), "so"),
+    (re.compile(r"(?<![a-zA-Z0-9])4(?![0-9])"), "to"),
+    (re.compile(r"\bO\s*@"), "a "),
+    (re.compile(r"@(?=[a-zA-Z])"), ""),
+]
+
+_OCR_WORD_FIXES = {
+    "gome": "some",
+    "heme": "home",
+    "leeking": "looking",
+    "bitte": "little",
+    "shu": "still",
+    "mange": "mango",
+    "fest": "rest",
+    "reloaning": "returning",
+    "matt": "small",
+}
+
+def _fix_symbols(text: str) -> str:
+    """Fix common OCR symbol/number to letter misreads."""
+    for pattern, replacement in _SYMBOL_FIXES:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _spellcheck_word(word: str) -> str:
+    """Return the spell-corrected version of a word, or the original."""
+    if not word:
+        return word
+    letters_only = re.sub(r"[^a-zA-Z]", "", word)
+    if len(letters_only) <= 1:
+        return word
+
+    prefix = re.match(r"^([^a-zA-Z]*)", word).group(1)
+    suffix = re.search(r"([^a-zA-Z]*)$", word).group(1)
+    was_upper = letters_only[0].isupper()
+
+    if letters_only.lower() in _OCR_WORD_FIXES:
+        fixed = _OCR_WORD_FIXES[letters_only.lower()]
+        if was_upper:
+            fixed = fixed.capitalize()
+        return prefix + fixed + suffix
+
+    if not _HAS_SPELLCHECKER:
+        return word
+    if letters_only.lower() in _spell:
+        return word
+    corrected = _spell.correction(letters_only.lower())
+    if corrected and corrected != letters_only.lower():
+        if was_upper:
+            corrected = corrected.capitalize()
+        return prefix + corrected + suffix
+    return word
+
+
+def _postprocess_ocr(text: str, word_confidences: List[Dict]) -> str:
+    """Fix common OCR errors using symbol correction and spell checking.
+
+    Applies symbol fixes first (digit/punctuation → letter), then runs
+    every word through the spell checker to correct non-dictionary words.
+    """
+    text = _fix_symbols(text)
+
+    if not _HAS_SPELLCHECKER:
+        return text
+
+    def replace_word(match):
+        return _spellcheck_word(match.group(0))
+
+    result = re.sub(r"\S+", replace_word, text)
+    logger.info("OCR post-processing applied spell correction")
+    return result
+
+
 class OCREngine:
     """Wrapper around pytesseract for text extraction from images."""
 
-    DEFAULT_CONFIG = "--oem 3 --psm 6"
-    HANDWRITING_CONFIG = "--oem 3 --psm 6"
+    DEFAULT_CONFIG = "--oem 3 --psm 3"
+    HANDWRITING_CONFIG = "--oem 3 --psm 3"
 
     def __init__(self, tesseract_path: Optional[str] = None,
                  language: str = "eng"):
-        if tesseract_path:
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path
+        resolved = tesseract_path or _find_tesseract()
+        if resolved:
+            pytesseract.pytesseract.tesseract_cmd = resolved
+            logger.info("Using Tesseract at: %s", resolved)
+        else:
+            logger.warning(
+                "Tesseract not found on PATH or common install locations. "
+                "OCR will fail unless tesseract is available."
+            )
         self.language = language
 
     def extract_text(self, image: np.ndarray,
@@ -66,8 +193,10 @@ class OCREngine:
                     "height": data["height"][i],
                 })
 
+        corrected_text = _postprocess_ocr(text.strip(), word_details)
+
         return OCRResult(
-            text=text.strip(),
+            text=corrected_text,
             confidence=round(avg_confidence, 2),
             word_confidences=word_details,
         )

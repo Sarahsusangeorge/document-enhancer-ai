@@ -71,6 +71,19 @@ class PipelineWorker(QRunnable):
                     self.signals.cancelled.emit()
                     return
 
+                ocr_errors = [
+                    e for e in errors
+                    if e.get("stage") in ("preprocessing", "ocr")
+                ]
+                if ocr_errors:
+                    msg = ocr_errors[-1].get("error", "Unknown OCR error")
+                    self.signals.error.emit(
+                        f"OCR failed: {msg}\n\n"
+                        "Make sure Tesseract OCR is installed and its path "
+                        "is configured in Settings."
+                    )
+                    return
+
             self.signals.finished.emit(result)
 
         except InterruptedError:

@@ -84,14 +84,61 @@ class ImagePreprocessor:
             return cv2.fastNlMeansDenoising(image, None, strength, 7, 21)
         return cv2.fastNlMeansDenoisingColored(image, None, strength, strength, 7, 21)
 
+    def _is_colored_ink(self, image: np.ndarray) -> bool:
+        """Detect if the image contains colored ink (e.g. blue/red pen)."""
+        if len(image.shape) != 3:
+            return False
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        saturation = hsv[:, :, 1]
+        high_sat_ratio = np.count_nonzero(saturation > 50) / saturation.size
+        return high_sat_ratio > 0.02
+
+    def _extract_ink(self, image: np.ndarray) -> np.ndarray:
+        """Extract ink from colored-ink documents by isolating dark/saturated
+        pixels against a light background, producing a clean grayscale image."""
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        sat = hsv[:, :, 1].astype(np.float32)
+        val = hsv[:, :, 2].astype(np.float32)
+
+        ink_score = np.clip((255.0 - gray.astype(np.float32)) + sat * 0.5, 0, 255)
+        result = 255 - ink_score.astype(np.uint8)
+        return result
+
+    def _upscale_if_needed(self, image: np.ndarray,
+                           min_height: int = 1500) -> np.ndarray:
+        """Upscale small images so Tesseract has enough pixel data."""
+        h, w = image.shape[:2]
+        if h >= min_height:
+            return image
+        scale = min_height / h
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        logger.info("Upscaling image from %dx%d to %dx%d", w, h, new_w, new_h)
+        return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
     def preprocess(self, image: np.ndarray,
                    apply_threshold: bool = False) -> np.ndarray:
-        """Full preprocessing pipeline: skew correction -> CLAHE -> denoise."""
-        result = self.correct_skew(image)
-        result = self.apply_clahe(result)
-        result = self.denoise(result)
+        """Full preprocessing pipeline: upscale -> skew correction ->
+        ink extraction (for colored ink) or CLAHE -> denoise -> threshold."""
+        result = self._upscale_if_needed(image)
+        result = self.correct_skew(result)
+
+        if self._is_colored_ink(result):
+            logger.info("Colored ink detected — using ink extraction")
+            result = self._extract_ink(result)
+        else:
+            result = self.apply_clahe(result)
+
+        result = self.denoise(result, strength=6)
+
         if apply_threshold:
             result = self.adaptive_threshold(result)
+        else:
+            gray = self.to_grayscale(result) if len(result.shape) == 3 else result
+            _, result = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
         return result
 
     def load_image(self, path: str) -> np.ndarray:
