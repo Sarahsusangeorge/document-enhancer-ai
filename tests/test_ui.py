@@ -14,19 +14,20 @@ UI Testing Strategy:
   6. Accessibility testing (keyboard navigation, labels)
 """
 
+import os
+import sys
+
 import pytest
 
 try:
-    from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import Qt
-    from pytestqt.qtbot import QtBot
     PYSIDE6_AVAILABLE = True
 except ImportError:
     PYSIDE6_AVAILABLE = False
 
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -148,7 +149,10 @@ class TestDashboardWidgetUI:
         widget = DashboardWidget()
         qtbot.addWidget(widget)
 
-        options = [widget.filter_combo.itemText(i) for i in range(widget.filter_combo.count())]
+        options = [
+            widget.filter_combo.itemText(i)
+            for i in range(widget.filter_combo.count())
+        ]
         assert options == ["All", "Pending", "Processing", "Completed"]
 
     def test_progress_bar_initial_state(self, qtbot):
@@ -207,8 +211,6 @@ class TestMainWindowUI:
 try:
     from selenium import webdriver
     from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False

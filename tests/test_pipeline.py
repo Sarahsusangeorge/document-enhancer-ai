@@ -8,28 +8,22 @@ transformer models) are mocked so the suite runs without them.
 
 import json
 import os
-import sys
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import cv2
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from app.models.document import (
     Document,
     DocumentStatus,
     DocumentType,
-    GrammarCorrection,
     PipelineStage,
     ProcessingState,
 )
 from app.core.preprocessing import ImagePreprocessor
 from app.core.ocr_engine import OCREngine, OCRResult
-from app.core.grammar_enhancer import GrammarEnhancer, GrammarResult, Correction
+from app.core.grammar_enhancer import GrammarEnhancer, GrammarResult
 from app.core.readability_optimizer import (
     ReadabilityOptimizer,
     ReadabilityMetrics,
@@ -45,7 +39,6 @@ from app.core.document_formatter import (
 from app.core.plagiarism_checker import (
     PlagiarismChecker,
     PlagiarismResult,
-    SimilarityMatch,
 )
 from app.core.paraphraser import Paraphraser, ParaphraseResult
 from app.core.pipeline import Pipeline, PipelineConfig
@@ -87,7 +80,6 @@ def _make_permissive_document(**kwargs):
     )
     defaults.update(kwargs)
     doc = Document(**defaults)
-    original_update = Document.update_status
 
     def _permissive_update(self, new_status):
         self.status = new_status
@@ -419,7 +411,12 @@ class TestReadabilityOptimizer:
 
     def test_split_long_sentences(self):
         optimizer = ReadabilityOptimizer()
-        long = " ".join(["word"] * 40) + " and " + " ".join(["more"] * 20) + "."
+        long = (
+            " ".join(["word"] * 40)
+            + " and "
+            + " ".join(["more"] * 20)
+            + "."
+        )
         result, changes = optimizer.split_long_sentences(long, max_words=35)
         assert isinstance(result, str)
 
@@ -551,16 +548,22 @@ class TestDocumentFormatter:
     def test_apply_template_essay(self, essay_text, tmp_output_dir):
         formatter = DocumentFormatter()
         output = os.path.join(tmp_output_dir, "essay.docx")
-        doc = formatter.apply_template(essay_text, doc_type="essay",
-                                       output_path=output)
+        doc = formatter.apply_template(
+            essay_text,
+            doc_type="essay",
+            output_path=output,
+        )
         assert os.path.isfile(output)
         assert len(doc.paragraphs) > 0
 
     def test_apply_template_report(self, report_text, tmp_output_dir):
         formatter = DocumentFormatter()
         output = os.path.join(tmp_output_dir, "report.docx")
-        doc = formatter.apply_template(report_text, doc_type="report",
-                                       output_path=output)
+        formatter.apply_template(
+            report_text,
+            doc_type="report",
+            output_path=output,
+        )
         assert os.path.isfile(output)
 
     def test_apply_template_auto_detect(self, essay_text):
@@ -579,7 +582,11 @@ class TestDocumentFormatter:
 
     def test_custom_templates(self):
         custom = {
-            "memo": FormatTemplate(name="Memo", font_name="Arial", font_size=10),
+            "memo": FormatTemplate(
+                name="Memo",
+                font_name="Arial",
+                font_size=10,
+            ),
         }
         formatter = DocumentFormatter(templates=custom)
         assert "memo" in formatter.get_template_names()
@@ -587,7 +594,9 @@ class TestDocumentFormatter:
 
     def test_default_templates_match_keywords(self):
         for key in TYPE_KEYWORDS:
-            assert key in DEFAULT_TEMPLATES, f"Missing template for type: {key}"
+            assert key in DEFAULT_TEMPLATES, (
+                f"Missing template for type: {key}"
+            )
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -806,7 +815,10 @@ class TestPipeline:
 
         pipeline.ocr_engine = MagicMock()
         pipeline.ocr_engine.extract_text.return_value = OCRResult(
-            text="The quick brown fox jumps over the lazy dog. This is a test.",
+            text=(
+                "The quick brown fox jumps over the lazy dog. "
+                "This is a test."
+            ),
             confidence=92.5,
             word_confidences=[],
         )
@@ -818,18 +830,25 @@ class TestPipeline:
         pipeline.grammar_enhancer = MagicMock()
         pipeline.grammar_enhancer.enhance.return_value = GrammarResult(
             original_text="test",
-            corrected_text="The quick brown fox jumps over the lazy dog. This is a test.",
+            corrected_text=(
+                "The quick brown fox jumps over the lazy dog. This is a test."
+            ),
             corrections=[],
             total_errors=0,
         )
 
         pipeline.readability_optimizer = MagicMock()
-        pipeline.readability_optimizer.optimize.return_value = ReadabilityResult(
-            original_text="test",
-            optimized_text="The quick brown fox jumps over the lazy dog. This is a test.",
-            original_metrics=ReadabilityMetrics(flesch_reading_ease=65.0),
-            optimized_metrics=ReadabilityMetrics(flesch_reading_ease=70.0),
-            changes_made=[],
+        pipeline.readability_optimizer.optimize.return_value = (
+            ReadabilityResult(
+                original_text="test",
+                optimized_text=(
+                    "The quick brown fox jumps over the lazy dog. "
+                    "This is a test."
+                ),
+                original_metrics=ReadabilityMetrics(flesch_reading_ease=65.0),
+                optimized_metrics=ReadabilityMetrics(flesch_reading_ease=70.0),
+                changes_made=[],
+            )
         )
 
         pipeline.summarizer = MagicMock()
@@ -866,7 +885,8 @@ class TestPipeline:
     def test_process_multiple_images(self, sample_image, permissive_document):
         pipeline = self._build_mocked_pipeline()
         result = pipeline.process_images(
-            [sample_image, sample_image], permissive_document,
+            [sample_image, sample_image],
+            permissive_document,
         )
         assert isinstance(result, Document)
         assert result.status == DocumentStatus.COMPLETED
@@ -897,7 +917,9 @@ class TestPipeline:
     def test_process_handles_exception(self, sample_image):
         pipeline = self._build_mocked_pipeline()
         doc = _make_permissive_document()
-        pipeline.preprocessor.preprocess.side_effect = RuntimeError("GPU error")
+        pipeline.preprocessor.preprocess.side_effect = RuntimeError(
+            "GPU error"
+        )
         result = pipeline.process_image(sample_image, doc)
         assert result.processing_state.has_errors
         assert result.status == DocumentStatus.FAILED
@@ -1163,7 +1185,10 @@ class TestDocumentExporter:
         )
         exporter = DocumentExporter()
         with pytest.raises(ValueError, match="no text"):
-            exporter.export_docx(doc, os.path.join(tmp_output_dir, "fail.docx"))
+            exporter.export_docx(
+                doc,
+                os.path.join(tmp_output_dir, "fail.docx"),
+            )
 
     def test_export_metadata_from_document(self):
         doc = self._make_document()
@@ -1210,12 +1235,22 @@ class TestResourceFiles:
 
     def test_icon_files_exist(self):
         for name in self.EXPECTED_ICONS:
-            path = os.path.join(self.PROJECT_ROOT, "resources", "icons", f"{name}.svg")
+            path = os.path.join(
+                self.PROJECT_ROOT,
+                "resources",
+                "icons",
+                f"{name}.svg",
+            )
             assert os.path.isfile(path), f"Missing icon: {path}"
 
     def test_icon_files_are_valid_svg(self):
         for name in self.EXPECTED_ICONS:
-            path = os.path.join(self.PROJECT_ROOT, "resources", "icons", f"{name}.svg")
+            path = os.path.join(
+                self.PROJECT_ROOT,
+                "resources",
+                "icons",
+                f"{name}.svg",
+            )
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
             assert "<svg" in content, f"{name}.svg is not valid SVG"
@@ -1303,8 +1338,10 @@ class TestEndToEnd:
             "Dear Mr. Smith,\n\n"
             "I am writing to inform you about the results of our analysis. "
             "The findings indicate a significant improvement in performance. "
-            "Furthermore, the methodology was validated by external reviewers. "
-            "In conclusion, we recommend proceeding with the proposed plan.\n\n"
+            "Furthermore, the methodology was validated by external "
+            "reviewers. "
+            "In conclusion, we recommend proceeding with the proposed "
+            "plan.\n\n"
             "Sincerely,\nJane Doe"
         )
         pipeline.ocr_engine.extract_text.return_value = OCRResult(
@@ -1321,25 +1358,39 @@ class TestEndToEnd:
 
         pipeline.readability_optimizer = MagicMock()
         optimized = extracted_text.replace("Furthermore", "Also")
-        pipeline.readability_optimizer.optimize.return_value = ReadabilityResult(
-            original_text=extracted_text,
-            optimized_text=optimized,
-            original_metrics=ReadabilityMetrics(flesch_reading_ease=55.0),
-            optimized_metrics=ReadabilityMetrics(flesch_reading_ease=65.0),
-            changes_made=["Replaced 'Furthermore' with 'Also'"],
+        pipeline.readability_optimizer.optimize.return_value = (
+            ReadabilityResult(
+                original_text=extracted_text,
+                optimized_text=optimized,
+                original_metrics=ReadabilityMetrics(
+                    flesch_reading_ease=55.0
+                ),
+                optimized_metrics=ReadabilityMetrics(
+                    flesch_reading_ease=65.0
+                ),
+                changes_made=[
+                    "Replaced 'Furthermore' with 'Also'"
+                ],
+            )
         )
 
         pipeline.summarizer = MagicMock()
         pipeline.summarizer.summarize.return_value = SummaryResult(
             original_text=optimized,
-            summary="Analysis shows significant improvement. Recommended to proceed.",
+            summary=(
+                "Analysis shows significant improvement. "
+                "Recommended to proceed."
+            ),
             method="extractive",
             compression_ratio=0.25,
         )
 
         pipeline.plagiarism_checker = MagicMock()
         pipeline.plagiarism_checker.check.return_value = PlagiarismResult(
-            text=optimized, overall_score=3.0, matches=[], flagged_sentences=[],
+            text=optimized,
+            overall_score=3.0,
+            matches=[],
+            flagged_sentences=[],
         )
 
         pipeline.paraphraser = MagicMock()
@@ -1390,7 +1441,9 @@ class TestEndToEnd:
         pipeline.preprocessor = ImagePreprocessor()
 
         pipeline.ocr_engine = MagicMock()
-        extracted = "This is a simple test document with enough words to process."
+        extracted = (
+            "This is a simple test document with enough words to process."
+        )
         pipeline.ocr_engine.extract_text.return_value = OCRResult(
             text=extracted, confidence=91.0,
         )
